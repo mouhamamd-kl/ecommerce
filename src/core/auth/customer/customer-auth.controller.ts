@@ -33,7 +33,7 @@ export class CustomerAuthController {
         private readonly authService: CustomerAuthService,
     ) { }
 
-    @Throttle({ default: { limit: 5, ttl: 60_000 } })
+    @Throttle({ default: { limit: 50, ttl: 60_000 } })
     @Post('customer/register')
     @HttpCode(HttpStatus.CREATED)
     async register(
@@ -50,7 +50,7 @@ export class CustomerAuthController {
         );
     }
 
-    @Throttle({ default: { limit: 5, ttl: 60_000 } })
+    @Throttle({ default: { limit: 50, ttl: 60_000 } })
     @Post('customer/login')
     @HttpCode(HttpStatus.OK)
     async login(

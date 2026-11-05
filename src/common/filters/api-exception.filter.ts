@@ -1,4 +1,3 @@
-
 import {
   ArgumentsHost,
   Catch,
@@ -7,12 +6,12 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
+import { InsufficientStockError } from '../../modules/orders/application/errors/insufficient-stock.error.js';
+import { ProductNotFoundError } from '../../modules/products/application/errors/product-not-found.error.js';
 
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
-  constructor(
-    private readonly httpAdapterHost: HttpAdapterHost,
-  ) {}
+  constructor(private readonly httpAdapterHost: HttpAdapterHost) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const { httpAdapter } = this.httpAdapterHost;
@@ -20,14 +19,23 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse();
 
     const statusCode =
-      exception instanceof HttpException
-        ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+      exception instanceof InsufficientStockError
+        ? HttpStatus.CONFLICT
+        : exception instanceof ProductNotFoundError
+          ? HttpStatus.NOT_FOUND
+          : exception instanceof HttpException
+            ? exception.getStatus()
+            : HttpStatus.INTERNAL_SERVER_ERROR;
 
     let message: string | string[];
 
-    if (statusCode >= 500) {
-      // Never expose internal exception details to API clients.
+    if (
+      exception instanceof InsufficientStockError ||
+      exception instanceof ProductNotFoundError
+    ) {
+      message = exception.message;
+    } else if (statusCode === HttpStatus.INTERNAL_SERVER_ERROR) {
+      // Unexpected failures and explicit HTTP 500 errors keep their details private.
       message = 'Internal server error';
     } else if (exception instanceof HttpException) {
       const exceptionResponse = exception.getResponse();
@@ -44,10 +52,8 @@ export class ApiExceptionFilter implements ExceptionFilter {
         message =
           typeof exceptionMessage === 'string' ||
           (Array.isArray(exceptionMessage) &&
-            exceptionMessage.every(
-              (item) => typeof item === 'string',
-            ))
-            ? exceptionMessage as string | string[]
+            exceptionMessage.every((item) => typeof item === 'string'))
+            ? (exceptionMessage as string | string[])
             : exception.message;
       } else {
         message = exception.message;

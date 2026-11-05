@@ -15,7 +15,7 @@ import { OrderItem } from './entities/order-item.entity.js';
 import { Product } from '../products/entities/product.entity.js';
 import { Cart } from '../cart/entities/cart.entity.js';
 import { Inventory } from '../inventory/entities/inventory.entity.js';
-import { NotificationsService } from '../notifications/notifications.service.js';
+import { CreateNotificationUseCase } from '../notifications/application/use-cases/create-notification.use-case.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto.js';
 
@@ -26,12 +26,13 @@ import {
   type OrderStatusType,
 } from './order-status.js';
 import { CartItem } from '../cart/entities/cart-item.entity.js';
-import { NotificationRecipientType, NotificationType } from '../notifications/entities/enums/notification.enum.js';
+import { NotificationRecipientType } from '../notifications/domain/enums/notification-recipient-type.enum.js';
+import { NotificationType } from '../notifications/domain/enums/notification-type.enum.js';
 
 @Injectable()
 export class OrdersService {
   constructor(
-    private readonly notificationsService: NotificationsService,
+    private readonly createNotificationUseCase: CreateNotificationUseCase,
     private readonly dataSource: DataSource,
 
     @InjectRepository(Order)
@@ -184,7 +185,7 @@ export class OrdersService {
         await cartItemRepository.delete({
           cartId: cart.id,
         });
-        await this.notificationsService.create({
+        await this.createNotificationUseCase.execute({
           recipientType: NotificationRecipientType.customer,
           recipientId: userId,
           type: NotificationType.orderCreated,

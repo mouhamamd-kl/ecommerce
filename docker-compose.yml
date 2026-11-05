@@ -34,11 +34,36 @@ services:
       DB_DATABASE: ${DB_DATABASE:-ecommerce}
       CUSTOMER_JWT_SECRET: ${CUSTOMER_JWT_SECRET:?Set CUSTOMER_JWT_SECRET in .env}
       ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:?Set ADMIN_JWT_SECRET in .env}
+      INVENTORY_DRIVER: ${INVENTORY_DRIVER:-grpc}
+      WAREHOUSE_GRPC_URL: warehouse:50051
+      WAREHOUSE_GRPC_TIMEOUT_MS: ${WAREHOUSE_GRPC_TIMEOUT_MS:-3000}
     ports:
       - "3000:3000"
     depends_on:
       postgres:
         condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    networks:
+      - default
+      - warehouse
+
+  init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      DB_DATABASE: ${DB_DATABASE:-ecommerce}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["node", "dist/database/init-schema.js"]
   seed:
     build:
       context: .
@@ -60,3 +85,8 @@ services:
     command: ["node", "dist/database/seed.js"]
 volumes:
   postgres_data:
+
+networks:
+  warehouse:
+    external: true
+    name: ecommerce-warehouse

@@ -12,7 +12,7 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
-  ) { }
+  ) {}
 
   async create(dto: CreateUserDto): Promise<User> {
     const email = dto.email.trim().toLowerCase();
@@ -37,14 +37,25 @@ export class UsersService {
   }
 
   async findOneByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { email, role: Role.customer }, });
+    return this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.email = :email', {
+        email: email.trim().toLowerCase(),
+      })
+      .andWhere('user.role = :role', {
+        role: Role.customer,
+      })
+      .getOne();
   }
   async findById(id: number): Promise<User | null> {
     return this.usersRepository.findOneBy({ id, role: Role.customer });
   }
   async update(id: number, updateUserDto: UpdateUserDto): Promise<void> {
     const { password } = updateUserDto;
-    await this.usersRepository.update(id, { ...(password && { password: password }), });
+    await this.usersRepository.update(id, {
+      ...(password && { password: password }),
+    });
   }
 
   async remove(id: number): Promise<void> {

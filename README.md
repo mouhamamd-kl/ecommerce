@@ -57,6 +57,107 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## Inventory backend: TypeORM or warehouse gRPC
+
+### Run both backends with Docker
+
+From this ecommerce directory, start the warehouse stack first, then NestJS:
+
+```powershell
+docker compose -f ../../warehouse-service/docker-compose.yml up -d --build
+docker compose up -d --build
+docker compose ps
+```
+
+The Nest API is at `http://localhost:3000/api/v1`, Swagger at
+`http://localhost:3000/api/docs`, and warehouse gRPC at `localhost:50051`.
+Compose defaults Nest's inventory driver to gRPC when `INVENTORY_DRIVER` is not
+set in `.env`. The container uses `warehouse:50051` on the shared
+`ecommerce-warehouse` network. An explicit `INVENTORY_DRIVER=typeorm` keeps local
+ORM inventory available.
+
+An initialization container runs before NestJS. It creates the current entity
+schema only if the ecommerce database is empty. For an existing database, it
+preserves existing tables and data and creates the missing warehouse reservation
+mapping table. It does not run destructive schema synchronization or seed data
+over an existing database. The category ORM entity explicitly maps to the
+existing `category` table.
+
+The warehouse database remains independent. Existing ORM quantities and pending
+orders are not silently migrated. Initialize stock in the admin dashboard for new
+gRPC orders; use the original backend or an explicit reservation migration for
+existing ORM orders.
+
+On Windows, `docker/wslconfig.example` shows the optional host WSL limits used
+when troubleshooting Docker Desktop resource errors. `%USERPROFILE%/.wslconfig`
+applies to all WSL 2 distributions and requires a WSL restart to take effect.
+
+`INVENTORY_DRIVER=typeorm` is the default. Set `INVENTORY_DRIVER=grpc` to use
+the Go warehouse service for both admin inventory endpoints and order checkout,
+cancellation, and delivery. Orders, carts, products, and users still use the
+ecommerce database.
+
+1. Start `C:\Users\HP\Desktop\PersonalProjects\backend\warehouse-service` with its
+   database migrations applied, `REPOSITORY_DRIVER=postgres`, `DATABASE_URL`, and
+   `GRPC_PORT=50051` in the process environment (`go run ./cmd/warehouse`). That
+   Go entry point reads environment variables directly; it does not load `.env`.
+2. Apply `src/database/migrations/20261104-order-inventory-reservations.sql` to
+   the **ecommerce** database. This app has `synchronize: false`; the new table
+   stores the warehouse reservation ID for each order.
+3. Configure ecommerce `.env` and restart Nest:
+
+   ```dotenv
+   INVENTORY_DRIVER=grpc
+   WAREHOUSE_GRPC_URL=localhost:50051
+   WAREHOUSE_GRPC_TIMEOUT_MS=3000
+   ```
+
+The gRPC client uses `src/proto/warehouse/v1/warehouse.proto`, copied from the
+warehouse project. Keep the two contracts in sync when changing the service.
+`nest build` copies this contract into `dist/proto` so the compiled app can load
+it without the source tree. `WAREHOUSE_GRPC_URL` takes a gRPC host and port;
+inside containers, use the warehouse service hostname instead of `localhost`.
+The connection uses plaintext transport, matching the Go server.
+
+Create inventory for ecommerce product IDs in the selected backend. Selecting a
+backend does not copy local stock or existing reservations. Finish existing
+orders or migrate their stock and reservation mappings before switching
+backends. A missing warehouse mapping is rejected instead of modifying local
+inventory. There is no automatic fallback to ORM when the warehouse is down.
+
+Checkout submits all products in one atomic `ReserveStock` call (up to 100
+distinct products), with an order-specific idempotency key. Reservations do not
+expire automatically, matching the ORM behavior. Cancellation releases the saved
+reservation; delivery confirms it. Movement responses include `referenceId` for
+opaque warehouse references; `referenceOrderId` remains null for those references.
+Remote list calls fetch every page to preserve the existing HTTP array responses.
+
+Admin product details (`GET /api/v1/admin/products/:id`) also include an `inventory`
+object with `quantityOnHand`, `quantityReserved`, `availableQuantity`,
+`lowStockThreshold`, and `isLowStock`, from the configured inventory backend.
+`inventory` is null if stock has not been initialized for that product. A warehouse
+outage returns an error rather than reporting an incorrect quantity. Public product
+responses keep their existing fields.
+
+Insufficient stock during checkout returns HTTP 409 in the normal
+`{ status: "error", message, data: null }` response format. Warehouse timeouts and
+unavailability return HTTP 504 and 503 with clear messages. Unexpected internal
+errors still return a generic HTTP 500 response.
+
+The ecommerce transaction and warehouse transaction commit separately. Checkout
+attempts to release a newly created reservation if its local transaction fails,
+including recovering a lost response with the same idempotency key. Failed
+cleanup is logged with the order ID, reservation ID when known, and key. A process
+crash or prolonged warehouse outage can still leave an orphan reservation that
+needs reconciliation. Release and confirmation are idempotent in the Go service:
+if an RPC succeeds but the local status update fails, retry the same transition.
+Resolve any uncertain outcome before attempting a different transition. This
+integration does not provide a durable outbox or distributed transaction.
+
+`npm test` includes a local gRPC server test suite covering protobuf mapping,
+pagination, deadlines, reservation persistence, rollback cleanup, and ORM batch
+compatibility. These tests do not require running PostgreSQL or the Go service.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

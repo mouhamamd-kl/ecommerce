@@ -42,6 +42,7 @@ export class CustomerAuthService {
 
         if (
             !user ||
+            typeof user.password !== 'string' ||
             !(await bcrypt.compare(dto.password, user.password))
         ) {
             throw new UnauthorizedException('Invalid email or password');

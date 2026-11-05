@@ -1,0 +1,7 @@
+# Optional Windows host limits for Docker Desktop's WSL 2 backend.
+# Copy to %USERPROFILE%\.wslconfig, preserving any existing configuration.
+# These limits apply to all WSL 2 distributions on this Windows account.
+[wsl2]
+memory=4GB
+processors=2
+swap=2GB

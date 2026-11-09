@@ -3,12 +3,20 @@ import 'reflect-metadata';
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import type { Request, Response, NextFunction } from 'express';
 
 import { AppModule } from './app.module.js';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const express = app.getHttpAdapter().getInstance();
+  express.set('etag', false);
+  app.use((_request: Request, response: Response, next: NextFunction) => {
+    // Private responses must not be stored by browsers or shared proxies.
+    response.setHeader('Cache-Control', 'no-store');
+    next();
+  });
 
   // API routes: /api/v1/...
   app.setGlobalPrefix('api');

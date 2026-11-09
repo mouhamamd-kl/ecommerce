@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
+import { CatalogReadRouter } from '../../../../../performance/catalog-read-router.js';
+import { PublicCatalogCache } from '../../../../../performance/public-catalog-cache.js';
 
 import { Product } from '../../../domain/entities/product.entity.js';
 import { ProductPhoto } from '../../../domain/entities/product-photo.entity.js';
@@ -22,10 +24,12 @@ export class ProductTypeOrmRepository implements ProductRepositoryPort {
 
     @InjectRepository(ProductPhotoOrmEntity)
     private readonly photosRepository: Repository<ProductPhotoOrmEntity>,
+    private readonly reads: CatalogReadRouter,
+    private readonly cache: PublicCatalogCache,
   ) {}
 
   async findActive(): Promise<Product[]> {
-    const products = await this.productsRepository.find({
+    const products = await this.reads.repository(this.productsRepository).find({
       where: { isActive: true },
       relations: {
         categories: true,
@@ -43,7 +47,7 @@ export class ProductTypeOrmRepository implements ProductRepositoryPort {
   }
 
   async findAll(): Promise<Product[]> {
-    const products = await this.productsRepository.find({
+    const products = await this.reads.repository(this.productsRepository).find({
       relations: {
         categories: true,
         photos: true,
@@ -60,7 +64,7 @@ export class ProductTypeOrmRepository implements ProductRepositoryPort {
   }
 
   async findById(id: number): Promise<Product | null> {
-    const product = await this.productsRepository.findOne({
+    const product = await this.reads.repository(this.productsRepository).findOne({
       where: { id },
       relations: {
         categories: true,
@@ -77,7 +81,7 @@ export class ProductTypeOrmRepository implements ProductRepositoryPort {
   }
 
   async findActiveById(id: number): Promise<Product | null> {
-    const product = await this.productsRepository.findOne({
+    const product = await this.reads.repository(this.productsRepository).findOne({
       where: {
         id,
         isActive: true,
@@ -96,8 +100,17 @@ export class ProductTypeOrmRepository implements ProductRepositoryPort {
     return product ? ProductMapper.toDomain(product) : null;
   }
 
+  async findSummariesByIds(ids: number[]) {
+    if (ids.length === 0) return [];
+    const rows = await this.productsRepository.find({
+      select: { id: true, name: true, price: true, isActive: true },
+      where: { id: In([...new Set(ids)]) },
+    });
+    return rows.map(row => ({ id: row.id, name: row.name, price: Number(row.price), isActive: row.isActive }));
+  }
+
   async save(product: Product): Promise<Product> {
-    const saved = await this.productsRepository.manager.transaction(
+    const { saved, previousRevision } = await this.productsRepository.manager.transaction(
       async (manager) => {
         const productsRepo = manager.getRepository(ProductOrmEntity);
         const photosRepo = manager.getRepository(ProductPhotoOrmEntity);
@@ -133,9 +146,10 @@ export class ProductTypeOrmRepository implements ProductRepositoryPort {
           await photosRepo.save(photoEntities);
         }
 
-        return savedProduct;
+        return { saved: savedProduct, previousRevision: await this.cache.bumpRevision(manager) };
       },
     );
+    await this.cache.invalidate(previousRevision);
 
     return (
       (await this.findById(saved.id)) ??
@@ -151,6 +165,10 @@ export class ProductTypeOrmRepository implements ProductRepositoryPort {
   }
 
   async remove(id: number): Promise<void> {
-    await this.productsRepository.delete(id);
+    const revision = await this.productsRepository.manager.transaction(async manager => {
+      await manager.getRepository(ProductOrmEntity).delete(id);
+      return this.cache.bumpRevision(manager);
+    });
+    await this.cache.invalidate(revision);
   }
 }

@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not } from 'typeorm';
+import { CatalogReadRouter } from '../../../../../performance/catalog-read-router.js';
+import { PublicCatalogCache } from '../../../../../performance/public-catalog-cache.js';
 
 import { Category } from '../../../domain/entities/category.js';
 import { CategoryRepositoryPort } from '../../../application/ports/repositories/category-repository.port.js';
@@ -15,10 +17,12 @@ export class CategoryTypeOrmRepository
   constructor(
     @InjectRepository(CategoryOrmEntity)
     private readonly repository: Repository<CategoryOrmEntity>,
+    private readonly reads: CatalogReadRouter,
+    private readonly cache: PublicCatalogCache,
   ) {}
 
   async findAll(): Promise<Category[]> {
-    const rows = await this.repository.find({
+    const rows = await this.reads.repository(this.repository).find({
       order: { id: 'DESC' },
     });
 
@@ -26,7 +30,7 @@ export class CategoryTypeOrmRepository
   }
 
   async findActive(): Promise<Category[]> {
-    const rows = await this.repository.find({
+    const rows = await this.reads.repository(this.repository).find({
       where: { isActive: true },
       order: { name: 'ASC' },
     });
@@ -35,7 +39,7 @@ export class CategoryTypeOrmRepository
   }
 
   async findById(id: number): Promise<Category | null> {
-    const row = await this.repository.findOne({
+    const row = await this.reads.repository(this.repository).findOne({
       where: { id },
     });
 
@@ -43,7 +47,7 @@ export class CategoryTypeOrmRepository
   }
 
   async findActiveById(id: number): Promise<Category | null> {
-    const row = await this.repository.findOne({
+    const row = await this.reads.repository(this.repository).findOne({
       where: { id, isActive: true },
     });
 
@@ -63,12 +67,20 @@ export class CategoryTypeOrmRepository
 
   async save(category: Category): Promise<Category> {
     const orm = CategoryPersistenceMapper.toOrm(category);
-    const saved = await this.repository.save(orm);
+    const { saved, revision } = await this.repository.manager.transaction(async manager => ({
+      saved: await manager.getRepository(CategoryOrmEntity).save(orm),
+      revision: await this.cache.bumpRevision(manager),
+    }));
+    await this.cache.invalidate(revision);
 
     return CategoryPersistenceMapper.toDomain(saved);
   }
 
   async remove(id: number): Promise<void> {
-    await this.repository.delete(id);
+    const revision = await this.repository.manager.transaction(async manager => {
+      await manager.getRepository(CategoryOrmEntity).delete(id);
+      return this.cache.bumpRevision(manager);
+    });
+    await this.cache.invalidate(revision);
   }
 }

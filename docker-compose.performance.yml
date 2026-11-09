@@ -1,0 +1,57 @@
+name: ecommerce-performance
+
+services:
+  api:
+    image: ecommerce-performance:${PERFORMANCE_IMAGE_TAG:-baseline}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: ecommerce-postgres-1
+      DB_PORT: 5432
+      DB_DATABASE: ecommerce_performance
+      INVENTORY_DRIVER: grpc
+      WAREHOUSE_GRPC_URL: performance-warehouse:50051
+      HTTP_RATE_LIMIT: 1000000
+      CATALOG_CACHE_ENABLED: ${CATALOG_CACHE_ENABLED:-false}
+      DB_READ_REPLICA_ENABLED: ${DB_READ_REPLICA_ENABLED:-false}
+      DB_REPLICA_HOST: ecommerce-postgres-replica-1
+      DB_REPLICA_PORT: 5432
+      REDIS_URL: redis://ecommerce-redis-1:6379
+    ports:
+      - "127.0.0.1:3001:3000"
+    networks: [database, warehouse]
+    depends_on:
+      performance-warehouse:
+        condition: service_healthy
+
+  performance-warehouse:
+    image: warehouse-service-warehouse:latest
+    restart: unless-stopped
+    environment:
+      GRPC_PORT: 50051
+      REPOSITORY_DRIVER: postgres
+      DATABASE_URL: postgres://warehouse:warehouse_password@warehouse-postgres:5432/warehouse_performance?sslmode=disable
+    networks: [warehouse, warehouse-database]
+
+  k6:
+    image: grafana/k6:latest
+    profiles: [tools]
+    environment:
+      BASE_URL: http://api:3000/api/v1
+    volumes:
+      - ./performance:/scripts:ro
+      - ./performance-results:/results
+    networks: [database]
+
+networks:
+  database:
+    external: true
+    name: ecommerce_default
+  warehouse:
+    external: true
+    name: ecommerce-warehouse
+  warehouse-database:
+    external: true
+    name: warehouse-service_default

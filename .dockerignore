@@ -9,3 +9,6 @@ coverage
 *.log
 .vscode
 .idea
+performance-results
+.temp
+PERFORMANCE_CACHING_WALKTHROUGH.md

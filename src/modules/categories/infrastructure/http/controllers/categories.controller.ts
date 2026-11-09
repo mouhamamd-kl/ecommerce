@@ -15,6 +15,8 @@ import {
 } from '@nestjs/swagger';
 
 import { ApiResponse } from '../../../../../common/helpers/api-response.js';
+import { PublicCatalogCache } from '../../../../../performance/public-catalog-cache.js';
+import { sendCatalog } from '../../../../../performance/catalog-http.js';
 
 import { GetActiveCategoriesUseCase } from '../../../application/use-cases/get-active-categories.use-case.js';
 import { GetActiveCategoryUseCase } from '../../../application/use-cases/get-active-category.use-case.js';
@@ -27,6 +29,7 @@ export class CategoriesController {
   constructor(
     private readonly getActiveCategoriesUseCase: GetActiveCategoriesUseCase,
     private readonly getActiveCategoryUseCase: GetActiveCategoryUseCase,
+    private readonly catalogCache: PublicCatalogCache,
   ) {}
 
   @Get()
@@ -37,14 +40,9 @@ export class CategoriesController {
   })
   async findAll(@Res() response: Response) {
     try {
-      const categories = await this.getActiveCategoriesUseCase.execute();
-
-      return ApiResponse.sendResponseSuccess(
-        response,
-        categories,
-        'Categories retrieved successfully',
-        HttpStatus.OK,
-      );
+      return sendCatalog(response, await this.catalogCache.read(
+        'categories', 'Categories retrieved successfully', () => this.getActiveCategoriesUseCase.execute(),
+      ));
     } catch {
       return ApiResponse.sendResponseError(
         response,
@@ -62,14 +60,9 @@ export class CategoriesController {
     @Res() response: Response,
   ) {
     try {
-      const category = await this.getActiveCategoryUseCase.execute(id);
-
-      return ApiResponse.sendResponseSuccess(
-        response,
-        category,
-        'Category retrieved successfully',
-        HttpStatus.OK,
-      );
+      return sendCatalog(response, await this.catalogCache.read(
+        `category:${id}`, 'Category retrieved successfully', () => this.getActiveCategoryUseCase.execute(id),
+      ));
     } catch (error) {
       if (error instanceof CategoryNotFoundError) {
         return ApiResponse.sendResponseError(

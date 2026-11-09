@@ -158,6 +158,40 @@ integration does not provide a durable outbox or distributed transaction.
 pagination, deadlines, reservation persistence, rollback cleanup, and ORM batch
 compatibility. These tests do not require running PostgreSQL or the Go service.
 
+## Performance and caching (requirement 3)
+
+Compose now starts a PostgreSQL streaming replica (`localhost:5435`) and a
+dedicated Redis catalog cache (`localhost:6379`). Set `DB_REPLICATION_PASSWORD`
+and the settings listed in `.env.example` before startup. Database initialization
+applies the additive performance migration without replacing existing data.
+
+Public product/category responses use a 30-second Redis TTL, transactional cache
+revisions, explicit ETags, and `Cache-Control: public, no-cache`. Private responses
+use `no-store`. Catalog cache misses use the replica only after its WAL replay
+passes a primary freshness fence; lag or failure falls back to the primary.
+Orders, authentication, carts, and inventory always use authoritative reads.
+`GET /api/v1/admin/performance` exposes administrator-only cache/routing counters.
+
+The repeatable experiment uses separate `ecommerce_performance` and
+`warehouse_performance` databases and an API bound to `127.0.0.1:3001`. Start the
+normal warehouse stack first, then from this backend directory:
+
+```powershell
+node performance/benchmark.mjs
+# Or run the individual correctness checks and regenerate the local report:
+node performance/verify.mjs
+node performance/compare.mjs
+```
+
+The benchmark seeds 200,000 orders and measures the same k6 workload through five
+stages: baseline, indexes, batched queries, Redis, and replica routing. Its saved
+baseline comes from setup commit `e485cf1`, with only the benchmark rate limit
+parameterized. Normal API rate limits remain enabled. Raw results and the full
+personal `PERFORMANCE_CACHING_WALKTHROUGH.md` explanation are ignored by Git.
+Stop the extra benchmark services with
+`docker compose -f docker-compose.performance.yml stop`; normal storefront
+services keep running.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

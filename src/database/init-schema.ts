@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { readFileSync } from 'node:fs';
 import { DataSource } from 'typeorm';
 import { User } from '../modules/users/entities/user.entity.js';
 import { CategoryOrmEntity } from '../modules/categories/infrastructure/persistence/entities/category.orm-entity.js';
@@ -69,6 +70,8 @@ async function initializeSchema(): Promise<void> {
         'Preserved the existing schema and ensured the warehouse reservation mapping table exists.',
       );
     }
+    await dataSource.query(readFileSync(new URL('./migrations/20261109-performance.sql', import.meta.url), 'utf8'));
+    console.log('Ensured performance indexes and the catalog revision table exist.');
   } finally {
     await dataSource.destroy();
   }

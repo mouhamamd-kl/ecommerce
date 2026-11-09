@@ -2,6 +2,7 @@
 services:
   postgres:
     image: postgres:17
+    command: ["postgres", "-c", "wal_level=replica", "-c", "max_wal_senders=10", "-c", "wal_keep_size=256MB", "-c", "shared_preload_libraries=pg_stat_statements"]
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USERNAME:-postgres}
@@ -32,6 +33,12 @@ services:
       DB_USERNAME: ${DB_USERNAME:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       DB_DATABASE: ${DB_DATABASE:-ecommerce}
+      DB_READ_REPLICA_ENABLED: ${DB_READ_REPLICA_ENABLED:-true}
+      DB_REPLICA_HOST: postgres-replica
+      DB_REPLICA_PORT: 5432
+      CATALOG_CACHE_ENABLED: ${CATALOG_CACHE_ENABLED:-true}
+      CATALOG_CACHE_TTL_SECONDS: ${CATALOG_CACHE_TTL_SECONDS:-30}
+      REDIS_URL: redis://redis:6379
       CUSTOMER_JWT_SECRET: ${CUSTOMER_JWT_SECRET:?Set CUSTOMER_JWT_SECRET in .env}
       ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:?Set ADMIN_JWT_SECRET in .env}
       INVENTORY_DRIVER: ${INVENTORY_DRIVER:-grpc}
@@ -44,9 +51,66 @@ services:
         condition: service_healthy
       init:
         condition: service_completed_successfully
+      postgres-replica:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - default
       - warehouse
+
+  replication-setup:
+    image: postgres:17
+    restart: "no"
+    environment:
+      PGHOST: postgres
+      PGUSER: ${DB_USERNAME:-postgres}
+      PGPASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      PGDATABASE: ${DB_DATABASE:-ecommerce}
+      REPLICATION_PASSWORD: ${DB_REPLICATION_PASSWORD:?Set DB_REPLICATION_PASSWORD in .env}
+    volumes:
+      - postgres_data:/primary
+      - ./docker/setup-replication.sh:/scripts/setup-replication.sh:ro
+    entrypoint: ["/bin/sh", "/scripts/setup-replication.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres-replica:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_DB: ${DB_DATABASE:-ecommerce}
+      PGPASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      REPLICATION_PASSWORD: ${DB_REPLICATION_PASSWORD:?Set DB_REPLICATION_PASSWORD in .env}
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+      - ./docker/start-replica.sh:/scripts/start-replica.sh:ro
+    ports:
+      - "127.0.0.1:${DB_REPLICA_PORT:-5435}:5432"
+    entrypoint: ["/bin/sh", "/scripts/start-replica.sh"]
+    depends_on:
+      replication-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "psql -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" -Atc 'SELECT pg_is_in_recovery()' | grep -qx t"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   init:
     build:
@@ -85,6 +149,7 @@ services:
     command: ["node", "dist/database/seed.js"]
 volumes:
   postgres_data:
+  postgres_replica_data:
 
 networks:
   warehouse:

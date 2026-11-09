@@ -144,10 +144,12 @@ export class InventoryGrpcRepository implements InventoryRepositoryPort {
     try {
       for (let page = 1; ; page++) {
         const response = await this.client.call(method, { page, limit: 100 });
+        const products = await this.products.findSummariesByIds(response.items.map(item => item.productId));
+        const byId = new Map(products.map(product => [product.id, product]));
         result.push(
-          ...(await Promise.all(
-            response.items.map((item) => this.readModel(item)),
-          )),
+          ...response.items.map(item => ({
+            inventory: inventoryFromGrpc(item), product: byId.get(item.productId) ?? null,
+          })),
         );
         if (result.length >= response.total) break;
         if (response.items.length === 0)

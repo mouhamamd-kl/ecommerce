@@ -55,5 +55,10 @@ pids
 *.seed
 *.pid.lock
 
+# Local requirement-three walkthrough and measured artifacts
+/PERFORMANCE_CACHING_WALKTHROUGH.md
+/performance-results/
+.env.performance.local
+
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json

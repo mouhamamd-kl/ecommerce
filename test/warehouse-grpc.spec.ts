@@ -212,6 +212,7 @@ describe('warehouse gRPC integration', () => {
     );
     client = new WarehouseGrpcClient(config);
     const products = {
+      findSummariesByIds: async (ids: number[]) => ids.map(id => ({ id, name: `Product ${id}`, price: 10, isActive: true })),
       findById: async (id: number) => ({
         id,
         name: `Product ${id}`,
@@ -371,6 +372,19 @@ describe('warehouse gRPC integration', () => {
       referenceId: 'opaque-reservation-id',
       referenceOrderId: null,
     });
+  });
+
+  it('loads product summaries in one batch for each inventory page instead of one query per item', async () => {
+    handlers.getAllInventory = unary(() => ({ items: Array.from({ length: 100 }, (_, i) => wireInventory(i + 1)), total: '100' }));
+    const products = {
+      findById: vi.fn(),
+      findSummariesByIds: vi.fn(async (ids: number[]) => ids.map(id => ({ id, name: `Product ${id}`, price: 10, isActive: true }))),
+    };
+    const batch = new InventoryGrpcRepository(client, products as unknown as ProductRepositoryPort);
+    const result = await batch.findAll();
+    expect(result).toHaveLength(100);
+    expect(products.findSummariesByIds).toHaveBeenCalledTimes(1);
+    expect(products.findById).not.toHaveBeenCalled();
   });
 
   it('maps missing and duplicate inventory to the existing domain errors', async () => {

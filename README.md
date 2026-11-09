@@ -64,7 +64,7 @@ $ npm run test:cov
 From this ecommerce directory, start the warehouse stack first, then NestJS:
 
 ```powershell
-docker compose -f ../../warehouse-service/docker-compose.yml up -d --build
+docker compose -f ../warehouse-service/docker-compose.yml up -d --build
 docker compose up -d --build
 docker compose ps
 ```

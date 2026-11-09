@@ -116,6 +116,8 @@ export class OrderTypeOrmRepository implements OrderRepositoryPort {
       },
       lock: {
         mode: 'pessimistic_write',
+        // PostgreSQL cannot lock the nullable order_items side of this join.
+        tables: ['orders'],
       },
     });
 
@@ -139,6 +141,7 @@ export class OrderTypeOrmRepository implements OrderRepositoryPort {
       },
       lock: {
         mode: 'pessimistic_write',
+        tables: ['orders'],
       },
     });
 

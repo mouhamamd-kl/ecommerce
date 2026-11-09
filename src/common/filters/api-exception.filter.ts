@@ -8,6 +8,7 @@ import {
 import { HttpAdapterHost } from '@nestjs/core';
 import { InsufficientStockError } from '../../modules/orders/application/errors/insufficient-stock.error.js';
 import { ProductNotFoundError } from '../../modules/products/application/errors/product-not-found.error.js';
+import { OrderNotFoundError } from '../../modules/orders/application/errors/order-not-found.error.js';
 
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
@@ -21,7 +22,8 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const statusCode =
       exception instanceof InsufficientStockError
         ? HttpStatus.CONFLICT
-        : exception instanceof ProductNotFoundError
+        : exception instanceof ProductNotFoundError ||
+            exception instanceof OrderNotFoundError
           ? HttpStatus.NOT_FOUND
           : exception instanceof HttpException
             ? exception.getStatus()
@@ -31,7 +33,8 @@ export class ApiExceptionFilter implements ExceptionFilter {
 
     if (
       exception instanceof InsufficientStockError ||
-      exception instanceof ProductNotFoundError
+      exception instanceof ProductNotFoundError ||
+      exception instanceof OrderNotFoundError
     ) {
       message = exception.message;
     } else if (statusCode === HttpStatus.INTERNAL_SERVER_ERROR) {

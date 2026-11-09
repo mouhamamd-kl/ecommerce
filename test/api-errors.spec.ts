@@ -15,6 +15,7 @@ import request from 'supertest';
 import { ApiExceptionFilter } from '../src/common/filters/api-exception.filter.js';
 import { InsufficientStockError } from '../src/modules/orders/application/errors/insufficient-stock.error.js';
 import { ProductNotFoundError } from '../src/modules/products/application/errors/product-not-found.error.js';
+import { OrderNotFoundError } from '../src/modules/orders/application/errors/order-not-found.error.js';
 import { warehouseException } from '../src/modules/inventory/infrastructure/grpc/warehouse-grpc.errors.js';
 
 let failure: unknown;
@@ -95,6 +96,11 @@ describe('API error responses', () => {
       error: new ProductNotFoundError(7),
       statusCode: 404,
       message: 'Product with ID 7 was not found',
+    },
+    {
+      error: new OrderNotFoundError(7),
+      statusCode: 404,
+      message: 'Order with ID 7 was not found.',
     },
     {
       error: new BadRequestException(['quantity must be positive']),

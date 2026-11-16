@@ -71,6 +71,7 @@ async function initializeSchema(): Promise<void> {
       );
     }
     await dataSource.query(readFileSync(new URL('./migrations/20261109-performance.sql', import.meta.url), 'utf8'));
+    await dataSource.query(readFileSync(new URL('./migrations/20261116-async-events.sql', import.meta.url), 'utf8'));
     console.log('Ensured performance indexes and the catalog revision table exist.');
   } finally {
     await dataSource.destroy();

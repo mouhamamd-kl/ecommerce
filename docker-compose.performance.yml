@@ -14,6 +14,7 @@ services:
       INVENTORY_DRIVER: grpc
       WAREHOUSE_GRPC_URL: performance-warehouse:50051
       HTTP_RATE_LIMIT: 1000000
+      ASYNC_EVENTS_ENABLED: "false"
       CATALOG_CACHE_ENABLED: ${CATALOG_CACHE_ENABLED:-false}
       DB_READ_REPLICA_ENABLED: ${DB_READ_REPLICA_ENABLED:-false}
       DB_REPLICA_HOST: ecommerce-postgres-replica-1

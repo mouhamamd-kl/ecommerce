@@ -17,6 +17,7 @@ import { OrderOrmEntity } from '../entities/order.orm-entity.js';
 import { OrderMapper } from '../mappers/order.mapper.js';
 
 import { TypeOrmOrderTransactionContext } from '../typeorm-order-transaction-context.js';
+import { enqueueOrderEvents } from '../../../../../async-events/order-event-outbox.js';
 
 @Injectable()
 export class OrderTypeOrmRepository implements OrderRepositoryPort {
@@ -174,6 +175,7 @@ export class OrderTypeOrmRepository implements OrderRepositoryPort {
       );
     }
 
+    await enqueueOrderEvents(this.getManager(transaction), reloadedEntity, order.id === null);
     return OrderMapper.toDomain(reloadedEntity);
   }
 }

@@ -21,6 +21,7 @@ services:
       retries: 10
 
   app:
+    image: ecommerce-app:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -44,6 +45,17 @@ services:
       INVENTORY_DRIVER: ${INVENTORY_DRIVER:-grpc}
       WAREHOUSE_GRPC_URL: warehouse:50051
       WAREHOUSE_GRPC_TIMEOUT_MS: ${WAREHOUSE_GRPC_TIMEOUT_MS:-3000}
+      ASYNC_EVENTS_ENABLED: ${ASYNC_EVENTS_ENABLED:-true}
+      RABBITMQ_URL: amqp://${RABBITMQ_USERNAME:-ecommerce}:${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}@rabbitmq:5672
+      EMAIL_RETRY_DELAY_MS: ${EMAIL_RETRY_DELAY_MS:-5000}
+      PUSHER_APP_ID: ${PUSHER_APP_ID:-ecommerce}
+      PUSHER_APP_KEY: ${PUSHER_APP_KEY:-ecommerce-local}
+      PUSHER_APP_SECRET: ${PUSHER_APP_SECRET:?Set PUSHER_APP_SECRET in .env}
+      PUSHER_HOST: soketi
+      PUSHER_PORT: 6001
+      PUSHER_PUBLIC_HOST: ${PUSHER_PUBLIC_HOST:-localhost}
+      PUSHER_PUBLIC_PORT: ${PUSHER_PUBLIC_PORT:-6001}
+      PUSHER_PUBLIC_TLS: ${PUSHER_PUBLIC_TLS:-false}
     ports:
       - "3000:3000"
     depends_on:
@@ -112,6 +124,99 @@ services:
       timeout: 3s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:4.2-management
+    hostname: ecommerce-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-ecommerce}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  soketi:
+    image: quay.io/soketi/soketi:1.6-16-alpine
+    restart: unless-stopped
+    environment:
+      SOKETI_DEFAULT_APP_ID: ${PUSHER_APP_ID:-ecommerce}
+      SOKETI_DEFAULT_APP_KEY: ${PUSHER_APP_KEY:-ecommerce-local}
+      SOKETI_DEFAULT_APP_SECRET: ${PUSHER_APP_SECRET:?Set PUSHER_APP_SECRET in .env}
+      SOKETI_DEFAULT_APP_ENABLE_CLIENT_MESSAGES: "false"
+      SOKETI_DEBUG: "false"
+    ports:
+      - "127.0.0.1:6001:6001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:6001/',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
+    environment:
+      MP_DATABASE: /data/mailpit.db
+    volumes:
+      - mailpit_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8025/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  email-worker:
+    image: ecommerce-app:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["node", "dist/async-events/email-worker.js"]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      DB_DATABASE: ${DB_DATABASE:-ecommerce}
+      RABBITMQ_URL: amqp://${RABBITMQ_USERNAME:-ecommerce}:${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}@rabbitmq:5672
+      EMAIL_TRANSPORT: ${EMAIL_TRANSPORT:-mailpit}
+      EMAIL_MAX_ATTEMPTS: ${EMAIL_MAX_ATTEMPTS:-4}
+      EMAIL_RETRY_DELAY_MS: ${EMAIL_RETRY_DELAY_MS:-5000}
+      MAILPIT_HOST: mailpit
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_REQUIRE_TLS: ${SMTP_REQUIRE_TLS:-true}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      STOREFRONT_URL: ${STOREFRONT_URL:-http://localhost:5173}
+      MAIL_CURRENCY: ${MAIL_CURRENCY:-USD}
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "const fs=require('fs');process.exit(Date.now()-Number(fs.readFileSync('/tmp/order-email-worker.health','utf8'))<15000?0:1)"]
+      interval: 5s
+      timeout: 5s
+      start_period: 15s
+      retries: 10
+
   init:
     build:
       context: .
@@ -150,6 +255,8 @@ services:
 volumes:
   postgres_data:
   postgres_replica_data:
+  rabbitmq_data:
+  mailpit_data:
 
 networks:
   warehouse:

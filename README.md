@@ -192,6 +192,31 @@ Stop the extra benchmark services with
 `docker compose -f docker-compose.performance.yml stop`; normal storefront
 services keep running.
 
+## Asynchronous confirmation emails and live orders (requirement 4)
+
+Compose includes RabbitMQ (`localhost:15672` management UI), Soketi
+(`localhost:6001`), Mailpit (`localhost:8025` local inbox), and an independent
+`email-worker`. Set the new RabbitMQ/Pusher secrets from `.env.example` in your
+ignored `.env`. Orders and side-effect events commit atomically in a PostgreSQL
+outbox; a background dispatcher publishes durable email jobs and private live
+events. Worker downtime or SMTP failures do not make checkout wait for email.
+
+Set `EMAIL_TRANSPORT=smtp` with Gmail app-password credentials to send real
+confirmations, or `mailpit` for local testing. Both the admin dashboard and each
+customer's order page update through authenticated, authorized private channels.
+`POST /api/v1/realtime/auth` signs only permitted channel subscriptions.
+
+From this directory, `npm.cmd run build` then `npm.cmd run async:verify` runs the
+local recovery/security proof in Mailpit mode. `npm.cmd run email:verify-gmail`
+explicitly sends one real confirmation to the configured Gmail account.
+`npm.cmd run email:replay-dlq -- 1` explicitly replays one failed message after
+its cause is fixed. Stop/start the worker with `docker compose stop email-worker`
+and `docker compose start email-worker`.
+
+The workspace guides are `../ASYNC_REALTIME_DEMO.md` and
+`../ASYNC_REALTIME_IMPLEMENTATION.md`. Raw verification files in `async-results/`
+are ignored by Git. Never publish `.env` or provider credentials.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

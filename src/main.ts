@@ -10,6 +10,7 @@ import { ApiExceptionFilter } from './common/filters/api-exception.filter.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
   const express = app.getHttpAdapter().getInstance();
   express.set('etag', false);
   app.use((_request: Request, response: Response, next: NextFunction) => {

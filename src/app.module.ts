@@ -25,6 +25,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PerformanceModule } from './performance/performance.module.js';
 import { databaseOptions } from './database/database-options.js';
+import { AsyncEventsModule } from './async-events/async-events.module.js';
 @Module({
   imports: [
     TypeOrmModule.forRootAsync({
@@ -36,6 +37,7 @@ import { databaseOptions } from './database/database-options.js';
       isGlobal: true,
     }),
     PerformanceModule,
+    AsyncEventsModule,
     UsersModule,
     ProductsModule,
     OrdersModule,
